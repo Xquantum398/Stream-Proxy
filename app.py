@@ -1,61 +1,152 @@
-from flask import Flask, request, Response
-import requests
-from urllib.parse import urlparse, urljoin, quote
+from httpx import Client
+from parsel import Selector
+import re
+import os
 
-app = Flask(__name__)
+class Konsol:
+    @staticmethod
+    def log(msg):
+        print(msg)
+    @staticmethod
+    def print(msg):
+        print(msg)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Referer": "https://patronyayin1.cfd/",
-    "Origin": "https://patronyayin1.cfd/"
-}
+konsol = Konsol()
 
-session = requests.Session()
-session.headers.update(HEADERS)
+class TRGoals:
+    def __init__(self, m3u_dosyasi):
+        self.m3u_dosyasi = m3u_dosyasi
+        self.httpx = Client(timeout=10, verify=False)
+        self.proxy_url_sablonu = "https://nellan-mandalin.hf.space/proxy/m3u?url="
 
-def rewrite_m3u8(content, base_url):
-    parsed = urlparse(base_url)
-    base = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rsplit('/',1)[0]}/"
-    out = []
+    def referer_domainini_al(self):
+        desen = r'#EXTVLCOPT:http-referrer=(https?://[^/]*trgoals[^/]*\.[^\s/]+)'
+        with open(self.m3u_dosyasi, "r") as dosya:
+            icerik = dosya.read()
+        if eslesme := re.search(desen, icerik):
+            return eslesme[1]
+        raise ValueError("Referer domain bulunamadı!")
 
-    for line in content.splitlines():
-        line = line.strip()
+    def trgoals_domaini_al(self):
+        redirect_url = "https://patronsportv31.cfd/"
+        for deneme in range(5):
+            if "bit.ly" not in redirect_url:
+                break
+            try:
+                redirect_url = self.redirect_gec(redirect_url)
+            except Exception as e:
+                konsol.log(f"[red][!] redirect_gec hata: {e}")
+                break
 
-        if line.startswith("#EXT-X-KEY") and "URI=" in line:
-            key = line.split('"')[1]
-            line = line.replace(key, f"/proxy/key?url={quote(key)}")
+        if "bit.ly" in redirect_url or "error" in redirect_url:
+            konsol.log("[yellow][!] Bit.ly çözülemedi, yedek linke geçiliyor...")
+            try:
+                redirect_url = self.redirect_gec("https://t.co/aOAO1eIsqE")
+            except Exception as e:
+                raise ValueError(f"Yedek link hata verdi: {e}")
 
-        elif line and not line.startswith("#"):
-            if not line.startswith("http"):
-                line = urljoin(base, line)
+        return redirect_url
 
-            line = f"/proxy/ts?url={quote(line)}"
+    def redirect_gec(self, redirect_url: str):
+        konsol.log(f"[cyan][~] redirect_gec çağrıldı: {redirect_url}")
+        try:
+            response = self.httpx.get(redirect_url, follow_redirects=True)
+        except Exception as e:
+            raise ValueError(f"Redirect hatası: {e}")
+        url_zinciri = [str(r.url) for r in response.history] + [str(response.url)]
+        for url in reversed(url_zinciri):
+            if "trgoals" in url:
+                return url.strip("/")
+        raise ValueError("'trgoals' içeren link bulunamadı!")
 
-        out.append(line)
+    def yeni_domaini_al(self, eldeki_domain: str) -> str:
+        def check(domain):
+            if domain == "https://patronsportv31.cfd/":
+                raise ValueError("Yeni domain geçersiz")
+            return domain
 
-    return "\n".join(out)
+        try:
+            return check(self.redirect_gec(eldeki_domain))
+        except:
+            konsol.log("[red][!] redirect_gec(eldeki_domain) başarısız")
+            try:
+                return check(self.trgoals_domaini_al())
+            except:
+                konsol.log("[red][!] trgoals_domaini_al başarısız")
+                try:
+                    return check(self.redirect_gec("https://t.co/MTLoNVkGQN"))
+                except:
+                    konsol.log("[red][!] yedek link de başarısız")
+                    rakam = int(eldeki_domain.split("trgoals")[1].split(".")[0]) + 1
+                    return f"https://trgoals{rakam}.xyz"
 
-@app.route("/proxy/m3u")
-def m3u():
-    url = request.args.get("url")
+    def m3u8_linklerini_proxy_yap(self, icerik: str) -> str:
+        konsol.log("[cyan][~] Proxy uygulanıyor...")
+        desen = r"(https?://[^\s\"']+?\.m3u8[^\s\"']*)"
+        def degistir(eslesme):
+            url = eslesme.group(1)
+            if not url.startswith(self.proxy_url_sablonu):
+                yeni = f"{self.proxy_url_sablonu}{url}"
+                konsol.log(f"[yellow]  Değiştirildi: {url} -> {yeni}")
+                return yeni
+            konsol.log(f"[blue]  Zaten proxy'li: {url}")
+            return url
+        return re.sub(desen, degistir, icerik)
 
-    session.get("https://patronyayin1.cfd/")
+    def m3u_guncelle(self):
+        eldeki = self.referer_domainini_al()
+        konsol.log(f"[yellow][~] Bilinen Domain : {eldeki}")
 
-    r = session.get(url)
-    data = rewrite_m3u8(r.text, r.url)
+        yeni = self.yeni_domaini_al(eldeki)
+        konsol.log(f"[green][+] Yeni Domain : {yeni}")
 
-    return Response(data, content_type="application/vnd.apple.mpegurl")
+        kontrol_url = f"{yeni}/channel.html?id=yayin1"
 
-@app.route("/proxy/ts")
-def ts():
-    url = request.args.get("url")
-    r = session.get(url, stream=True)
-    return Response(r.iter_content(8192), content_type="video/mp2t")
+        with open(self.m3u_dosyasi, "r") as dosya:
+            icerik = dosya.read()
 
-@app.route("/proxy/key")
-def key():
-    url = request.args.get("url")
-    return session.get(url).content
+        if not (eski := re.search(r'https?:\/\/[^\/]+\.(workers\.dev|shop|click|lat)\/?', icerik)):
+            raise ValueError("Eski yayın URL'si bulunamadı!")
+
+        eski_url = eski[0]
+        konsol.log(f"[yellow][~] Eski Yayın URL : {eski_url}")
+
+        response = self.httpx.get(kontrol_url, follow_redirects=True)
+        secici = Selector(response.text)
+        baslik = secici.xpath("//title/text()").get()
+
+        if response.status_code != 200 or baslik in ["404 Not Found", "502: Bad gateway"]:
+            konsol.log(f"[red][!] Sunucu durumu {response.status_code} — fallback uygulanıyor")
+            yayin_url = eski_url
+            yeni = eldeki
+        else:
+            if not (yayin := re.search(r'(?:var|let|const)\s+baseurl\s*=\s*"(https?://[^"]+)"', response.text)):
+                konsol.print(response.text)
+                raise ValueError("Base URL bulunamadı!")
+            yayin_url = yayin[1]
+
+        konsol.log(f"[green][+] Yeni Yayın URL : {yayin_url}")
+
+        yeni_icerik = (
+            icerik.replace(eski_url, yayin_url)
+                  .replace(eldeki, yeni)
+        )
+        yeni_icerik = self.m3u8_linklerini_proxy_yap(yeni_icerik)
+
+        with open(self.m3u_dosyasi, "w") as dosya:
+            dosya.write(yeni_icerik)
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=7860)
+    if not os.path.exists("trgoals.m3u"):
+        with open("trgoals.m3u", "w") as f:
+            f.write("""#EXTM3U
+#EXTVLCOPT:http-referrer=https://trgoals1352.xyz
+#EXTINF:-1 group-title="TRGoals Spor",TRGoals HD
+https://0ch.d72577a9dd0ec41.sbs/
+#EXTINF:-1 group-title="TRGoals Futbol",Maç 1
+https://cdn.example.com/live/match1.m3u8
+#EXTINF:-1 group-title="TRGoals Basketbol",Maç 2
+https://cdn.example.com/live/match2.m3u8
+""")
+    guncelleyici = TRGoals("trgoals.m3u")
+    guncelleyici.m3u_guncelle()
