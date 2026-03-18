@@ -115,7 +115,7 @@ def get_daddylive_base_url():
     except requests.RequestException as e:
         app.logger.error(f"Error fetching dynamic DaddyLive URL: {e}. Using fallback.")
     
-    DADDYLIVE_BASE_URL = "https://daddylive.sx/"
+    DADDYLIVE_BASE_URL = "https://patronyayin1.cfd/"
     app.logger.info(f"Using fallback DaddyLive URL: {DADDYLIVE_BASE_URL}")
     return DADDYLIVE_BASE_URL
 
@@ -132,7 +132,7 @@ class VavooResolver:
     def getAuthSignature(self):
         """Funzione che replica esattamente quella dell'addon utils.py"""
         headers = {
-            "user-agent": "okhttp/4.11.0",
+            "user-agent": "Mozilla/5.0 ",
             "accept": "application/json", 
             "content-type": "application/json; charset=utf-8",
             "content-length": "1106",
@@ -232,7 +232,7 @@ class VavooResolver:
             return None
             
         headers = {
-            "user-agent": "MediaHubMX/2",
+            "user-agent": "Mozilla/5.0 ",
             "accept": "application/json",
             "content-type": "application/json; charset=utf-8", 
             "content-length": "115",
