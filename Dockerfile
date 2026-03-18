@@ -1,6 +1,6 @@
 # Usa l'immagine base di Python
 FROM python:3.12-slim
-
+ 
 # Installa git e certificati SSL
 RUN apt-get update && apt-get install -y \
     git \
