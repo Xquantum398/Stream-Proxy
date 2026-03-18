@@ -5,15 +5,21 @@ from urllib.parse import urlparse, urljoin, quote
 app = Flask(__name__)
 
 # ==============================
-# SABİT HEADER (SENİN LİNK İÇİN)
+# GÜÇLÜ HEADER (403 FIX)
 # ==============================
-DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0",
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Referer": "https://patronyayin1.cfd/",
     "Origin": "https://patronyayin1.cfd/",
     "Accept": "*/*",
     "Connection": "keep-alive"
 }
+
+# ==============================
+# SESSION (cookie için)
+# ==============================
+session = requests.Session()
+session.headers.update(HEADERS)
 
 # ==============================
 # M3U8 REWRITE
@@ -27,23 +33,18 @@ def rewrite_m3u8(content, base_url):
     for line in content.splitlines():
         line = line.strip()
 
-        # KEY
         if line.startswith("#EXT-X-KEY") and "URI=" in line:
-            start = line.find('"') + 1
-            end = line.rfind('"')
-            key_url = line[start:end]
+            key_url = line.split('"')[1]
+            line = line.replace(
+                key_url,
+                f"/proxy/key?url={quote(key_url)}"
+            )
 
-            new_key = f"/proxy/key?url={quote(key_url)}"
-            line = line.replace(key_url, new_key)
-
-        # SEGMENT
         elif line and not line.startswith("#"):
-            if line.startswith("http"):
-                seg = line
-            else:
-                seg = urljoin(base, line)
+            if not line.startswith("http"):
+                line = urljoin(base, line)
 
-            line = f"/proxy/ts?url={quote(seg)}"
+            line = f"/proxy/ts?url={quote(line)}"
 
         output.append(line)
 
@@ -56,27 +57,25 @@ def rewrite_m3u8(content, base_url):
 def proxy_m3u():
     url = request.args.get("url")
 
-    if not url:
-        return "url param missing", 400
-
     try:
-        r = requests.get(url, headers=DEFAULT_HEADERS, timeout=15)
+        # 🔥 ÖNCE siteyi ziyaret et (cookie al)
+        session.get("https://patronyayin1.cfd/", timeout=10)
+
+        # 🔥 SONRA stream çek
+        r = session.get(url, timeout=15)
         r.raise_for_status()
 
         content = r.text
 
         if not content.startswith("#EXTM3U"):
-            return Response(content, content_type="text/plain")
+            return Response(content)
 
         modified = rewrite_m3u8(content, r.url)
 
-        return Response(
-            modified,
-            content_type="application/vnd.apple.mpegurl"
-        )
+        return Response(modified, content_type="application/vnd.apple.mpegurl")
 
     except Exception as e:
-        return str(e), 500
+        return f"HATA: {str(e)}", 500
 
 # ==============================
 # TS PROXY
@@ -86,10 +85,10 @@ def proxy_ts():
     url = request.args.get("url")
 
     try:
-        r = requests.get(url, headers=DEFAULT_HEADERS, stream=True, timeout=20)
+        r = session.get(url, stream=True, timeout=20)
 
         return Response(
-            r.iter_content(chunk_size=8192),
+            r.iter_content(8192),
             content_type="video/mp2t"
         )
     except Exception as e:
@@ -103,26 +102,17 @@ def proxy_key():
     url = request.args.get("url")
 
     try:
-        r = requests.get(url, headers=DEFAULT_HEADERS, timeout=10)
-
-        return Response(
-            r.content,
-            content_type="application/octet-stream"
-        )
+        r = session.get(url, timeout=10)
+        return Response(r.content)
     except Exception as e:
         return str(e), 500
 
 # ==============================
-# ROOT
-# ==============================
 @app.route("/")
 def home():
-    return "HF Proxy çalışıyor"
+    return "403 Fix Proxy OK"
 
-# ==============================
-# HUGGINGFACE RUN
 # ==============================
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 7860))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))
