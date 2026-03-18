@@ -21,7 +21,7 @@ class TRGoals:
             raise ValueError("M3U dosyasında 'trgoals' içeren referer domain bulunamadı!")
 
     def trgoals_domaini_al(self):
-        redirect_url = "https://bit.ly/m/taraftarium24w"
+        redirect_url = "https://patronyayin1.cfd/"
         deneme = 0
         while "bit.ly" in redirect_url and deneme < 5:
             try:
@@ -106,7 +106,7 @@ class TRGoals:
         yeni_domain = self.yeni_domaini_al(eldeki_domain)
         konsol.log(f"[green][+] Yeni Domain : {yeni_domain}")
 
-        kontrol_url = f"{yeni_domain}/channel.html?id=yayin1"
+        kontrol_url = f"{yeni_domain}/channel.html?id=patron"
 
         with open(self.m3u_dosyasi, "r") as dosya:
             m3u_icerik = dosya.read()
