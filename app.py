@@ -20,7 +20,7 @@ class TRGoals:
         self.proxy_url_sablonu = "https://nellan-mandalin.hf.space/proxy/m3u?url="
 
     def referer_domainini_al(self):
-        desen = r'#EXTVLCOPT:http-referrer=(https?://[^/]*trgoals[^/]*\.[^\s/]+)'
+        desen = r'#EXTVLCOPT:http-referrer=(https?://[^/]*patronsportv31.cfd/[^/]*\.[^\s/]+)'
         with open(self.m3u_dosyasi, "r") as dosya:
             icerik = dosya.read()
         if eslesme := re.search(desen, icerik):
